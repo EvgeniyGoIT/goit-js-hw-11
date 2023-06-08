@@ -1,12 +1,43 @@
 import SimpleLightbox from "simplelightbox";
 import "simplelightbox/dist/simple-lightbox.min.css";
 import Notiflix from 'notiflix';
-import 'scrollmagic/scrollmagic/uncompressed/plugins/debug.addIndicators';
-import fetchData from './pixabuyAPI';
 import createCardHtml from './createCardHtml';
+import axios from 'axios';
+import LoadMoreBtn from './loadMoreBtn';
 
 const form = document.querySelector('#search-form');
-const gallery = document.querySelector(".gallery");
+const gallery = document.querySelector('.gallery');
+// const loadMoreBtn = document.querySelector('[data-action="load-more"]');
+
+let currentPage = 1;
+let currentQuery = '';
+
+const loadMoreBtn = new LoadMoreBtn({
+    selector: '[data-action="load-more"]',
+    hidden: true,
+});
+
+async function fetchData() {
+  const BASE_URL = "https://pixabay.com/api/";
+  const API_KEY = '36854264-eb4d11c0d5687864ceed52463';
+  const params = new URLSearchParams({
+    key: API_KEY,
+    q: currentQuery,
+    image_type: 'photo',
+    orientation: 'horizontal',
+    safesearch: true,
+    page: currentPage,
+    per_page: 40
+  });
+
+  try {
+    const response = await axios.get(`${BASE_URL}?${params.toString()}`);
+      return response.data;
+      
+  } catch (error) {
+    throw new Error('An error occurred while fetching images.');
+  }
+}
 
 const renderGallery = (images) => {
   const cardsHtml = images.map((image) => createCardHtml(image)).join('');
@@ -18,26 +49,26 @@ const renderGallery = (images) => {
     captionDelay: 250,
   });
   lightbox.refresh();
-  
 };
-
-document.cookie = "cookieName=value; SameSite=None";
 
 const handleFormSubmit = async (event) => {
   event.preventDefault();
 
-  const searchQuery = form.elements.searchQuery.value.trim();
+  currentQuery = event.currentTarget.elements.searchQuery.value.trim();
 
-  if (searchQuery === '') {
+  if (currentQuery === '') {
     return;
   }
 
+  currentPage = 1;  
   gallery.innerHTML = '';
 
   try {
     Notiflix.Loading.standard('Loading...');
 
-    const { hits, totalHits } = await fetchData(searchQuery);
+    const data = await fetchData();
+    const { hits, totalHits } = data;
+
     Notiflix.Loading.remove();
 
     if (hits.length === 0) {
@@ -48,35 +79,33 @@ const handleFormSubmit = async (event) => {
     }
 
     renderGallery(hits);
-
-    if (hits.length < totalHits) {
-      Notiflix.Notify.info(`Hooray! We found ${totalHits} images.`);
-    } else {
-      Notiflix.Notify.info(`Hooray! We found ${totalHits} images.`);
+      
+      if (hits.length < totalHits) {
+          loadMoreBtn.show();
+          loadMoreBtn.disable();
+          loadMoreBtn.enable();
+        Notiflix.Notify.info(`Hooray! We found ${totalHits} images.`);
+      } else {
+        loadMoreBtn.hide();
+        Notiflix.Notify.info(`Hooray! We found ${totalHits} images.`);
     }
 
-    const cardHeight = gallery.firstElementChild.getBoundingClientRect().height;
-
-    window.scrollBy({
-      top: cardHeight * 2,
-      behavior: "smooth",
-    });
   } catch (error) {
-    Notiflix.Loading.remove();
-    Notiflix.Notify.failure('Failed to fetch data. Please try again later.');
+        Notiflix.Loading.remove();
+        Notiflix.Notify.failure('Failed to fetch data. Please try again later.');
   }
 };
 
 form.addEventListener('submit', handleFormSubmit);
 
+loadMoreBtn.refs.button.addEventListener('click', async () => {
+  currentPage += 1;
+  try {
+    const data = await fetchData();
+    const { hits } = data;
 
-
-console.log("Hello");
-
-
-
-
-
-
-
-
+    renderGallery(hits);
+  } catch (error) {
+    console.error(error);
+  }
+});
